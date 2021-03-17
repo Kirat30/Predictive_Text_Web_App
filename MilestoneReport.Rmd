@@ -1,0 +1,243 @@
+---
+title: "Milestone Report"
+author: "Kirt Preet Singh"
+date: "6/24/2020"
+output: html_document
+---
+
+## Loading the required packages
+```{r,message=FALSE}
+library(tm)
+library(lexicon)
+library(dplyr)
+library(tidytext)
+library(wordcloud)
+library(ngram)
+library(ggplot2)
+library(stringi)
+```
+
+## Task1
+
+### Getting and converting data into a Manipulatable Form
+
+#### Loading the Data
+```{r,warning=FALSE}
+doc_blog <- readLines("C:/Users/HP/Documents/RDirectory/final/en_US/en_US.blogs.txt",encoding = "UTF-8")
+doc_news <- readLines("C:/Users/HP/Documents/RDirectory/final/en_US/en_US.news.txt",encoding = "UTF-8")
+doc_twitter <- readLines("C:/Users/HP/Documents/RDirectory/final/en_US/en_US.twitter.txt",encoding = "UTF-8")
+```
+
+#### Data Exploration
+Here we observe the the traits of the read files
+```{r}
+blog_words <- stri_stats_latex(doc_blog)[4]
+news_words <- stri_stats_latex(doc_news)[4]
+twitter_words <- stri_stats_latex(doc_twitter)[4]
+data.frame("File" = c("Blogs", "News", "Twitter"),
+           "Lines" = c(length(doc_blog),length(doc_news),length(doc_twitter)),
+           "Words" = c(blog_words,news_words,twitter_words)
+           )
+```
+#### Sampling the Data
+```{r,message=FALSE}
+set.seed(534)
+blog_sample <- sample(x = doc_blog,size = length(doc_blog)*0.15,replace = TRUE)
+news_sample <- sample(x = doc_news,size = length(doc_news)*0.15,replace = TRUE)
+twitter_sample <- sample(x = doc_twitter,size = length(doc_twitter)*0.15,replace = TRUE)
+```
+
+#### Combining the samples and building a Corpus
+```{r,message=FALSE}
+combined <- c(blog_sample,news_sample,twitter_sample)
+corp_dat <- Corpus(VectorSource(combined))
+```
+
+### Data Manipulation
+
+#### Functions for targetted Data Manipulation
+```{r}
+replace <- content_transformer(function(x,pattern){
+        return(gsub(pattern," ", x,fixed = TRUE,useBytes = TRUE))
+})
+
+## NoN English words remover
+removeNonEnglish <- content_transformer(function(x){
+        return(iconv(x, "latin1", "ASCII", sub=""))
+})
+```
+
+#### Implementation to the functions and some other required transformations
+```{r,warning=FALSE}
+## Remove punctuations
+corp_dat <- tm_map(corp_dat,content_transformer(removePunctuation))
+
+## Covert to lowercase
+corp_dat <- tm_map(corp_dat,content_transformer(tolower))
+
+## Remove digits
+corp_dat <- tm_map(corp_dat,content_transformer(removeNumbers))
+
+# Remove Non English Characters
+corp_dat <- tm_map(corp_dat, removeNonEnglish)
+
+```
+
+#### Removing special charachters not in the domain of removePinctuation and other trannsformations
+```{r,warning=FALSE}
+corp_dat <- tm_map(corp_dat,replace, "$")
+corp_dat <- tm_map(corp_dat,replace, "^")
+corp_dat <- tm_map(corp_dat,replace, "-")
+corp_dat <- tm_map(corp_dat,replace, "~")
+corp_dat <- tm_map(corp_dat,replace, '"')
+corp_dat <- tm_map(corp_dat,replace, "-")
+corp_dat <- tm_map(corp_dat,replace, "+")
+corp_dat <- tm_map(corp_dat,replace, "=")
+corp_dat <- tm_map(corp_dat,replace, "<")
+corp_dat <- tm_map(corp_dat,replace, ">")
+corp_dat <- tm_map(corp_dat,replace, "|")
+corp_dat <- tm_map(corp_dat,replace, "*")
+corp_dat <- tm_map(corp_dat,replace, "`")
+corp_dat <- tm_map(corp_dat,replace, "/")
+corp_dat <- tm_map(corp_dat,replace, "(")
+corp_dat <- tm_map(corp_dat,replace, ")")
+corp_dat <- tm_map(corp_dat,replace, "[0-9][a-z]")
+```
+
+#### Removing Profanity
+Since profanity is added to indicate that the data requires cleaning, it becomes somewhat important to remove such words in our clean documentation, and also most importantly we don't want our prediction model predicting such words, so we follow a thorough and iterative process for profanity removal, for this purpose, profane character vectors from **lexicon package** are used to idenntif and remove such words from our data.
+```{r,warning=FALSE}
+profane <- c(profanity_alvarez,profanity_arr_bad,profanity_banned,profanity_racist,profanity_zac_anger)
+profane <- unique(profane)
+profanity_chunck <- profane[150:350]
+corp_dat <- tm_map(corp_dat,removeWords,profanity_chunck)
+profanity_chunck <- profane[350:700]
+corp_dat <- tm_map(corp_dat,removeWords,profanity_chunck)
+profanity_chunck <- profane[700:1050]
+corp_dat <- tm_map(corp_dat,removeWords,profanity_chunck)
+profanity_chunck <- profane[1050:1400]
+corp_dat <- tm_map(corp_dat,removeWords,profanity_chunck)
+profanity_chunck <- profane[1400:1750]
+corp_dat <- tm_map(corp_dat,removeWords,profanity_chunck)
+profanity_chunck <- profane[1900:2100]
+corp_dat <- tm_map(corp_dat,removeWords,profanity_chunck)
+profanity_chunck <- profane[2100:2450]
+corp_dat <- tm_map(corp_dat,removeWords,profanity_chunck)
+profanity_chunck <- profane[2450:2800]
+corp_dat <- tm_map(corp_dat,removeWords,profanity_chunck)
+profanity_chunck <- profane[2800:3162]
+corp_dat <- tm_map(corp_dat,removeWords,profanity_chunck)
+```
+
+#### Reforming the integrity of Contraction Words
+Due to the thorough removal of punctuations contraction words such as can't and won't exist in uninterpretable form, so a thorough reformation for such chunks is required.
+```{r,warning=FALSE}
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +im +", replacement = "i'm")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +ive +", replacement = "i've")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +cant +", replacement = "can't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +weve +", replacement = "we've")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +shouldve +", replacement = "should've")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +couldve +", replacement = "could've")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +shell +", replacement = "she'll")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +shes +", replacement = "she's")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +hes +", replacement = "he's")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +thats +", replacement = "that's")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +theyd +", replacement = "they'd")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +wont +", replacement = "won't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +werent +", replacement = "weren't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +wasnt +", replacement = "wasn't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +wouldnt +", replacement = "wouldn't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +doesnt +", replacement = "doesn't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +theyre +", replacement = "they're")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +didnt +", replacement = "didn't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +couldnt +", replacement = "couldn't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +shouldnt +", replacement = "shouldn't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +arent +", replacement = "aren't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +theres +", replacement = "there's")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +whats +", replacement = "what's")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +dont +", replacement = "don't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +lets +", replacement = "let's")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +isnt +", replacement = "isn't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +youll +", replacement = "you'll")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +youre +", replacement = "you're")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +idve +", replacement = "i would have")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +mustnt +", replacement = "mustn't")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +itll +", replacement = "it'll")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +ill +", replacement = "i'll")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +theyll +", replacement = "they'll")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +youd +", replacement = "you'd")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +hed +", replacement = "he'd")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +itd +", replacement = "it'd")
+corp_dat <- tm_map(corp_dat,content_transformer(gsub),pattern = " +wed +", replacement = "we'd")
+```
+
+### Creating a Document Term Matrix
+```{r}
+doc_term_mat <- DocumentTermMatrix(corp_dat)
+tdy_dtm <- tidy(doc_term_mat)
+```
+
+### Finalizing for the top words
+
+A list of some top most frequent words and a matrix dedicated & grouped entirely to the words and the frequency their occurances.
+```{r}
+one_word_feq <- tdy_dtm %>%
+        group_by(term) %>%
+        summarize(occurances = sum(count))
+
+one_word_feq <- one_word_feq[order(one_word_feq[,2],decreasing = TRUE),]
+head(one_word_feq)
+```
+
+Now we'll create a wordcloud for the top most frequent words
+```{r}
+top_words <- head(one_word_feq,30)
+wordcloud(words = top_words$term,freq = top_words$occurances,colors = brewer.pal(8,"Set1"))
+```
+
+## Task 2: Clustering and Modelling
+
+For the purpose of clustering the words we use the **ngram package**, for this task we will great 2-grams, 3-grams and 4-grams, but first a character vector out of the corpus is required for for thurher processing of it by the ngrams.
+
+### 2-grams
+```{r,cache=TRUE}
+## A character vector out of the corpus
+corp_str <- concatenate(lapply(corp_dat,"[", 1))
+
+
+ng2 <- ngram(str = corp_str,n = 2)
+ng_phrs_tbl2 <- get.phrasetable(ng2)
+ng_phrs_tbl2 <- ng_phrs_tbl2[order(ng_phrs_tbl2[,2],decreasing = TRUE),]
+head(ng_phrs_tbl2)
+```
+
+### 3-grams
+```{r,cache=TRUE}
+ng3 <- ngram(str = corp_str,n = 3)
+ng_phrs_tbl3 <- get.phrasetable(ng3)
+ng_phrs_tbl3 <- ng_phrs_tbl3[order(ng_phrs_tbl3[,2],decreasing = TRUE),]
+head(ng_phrs_tbl3)
+```
+
+### 4-grams
+```{r,cache=TRUE}
+ng4 <- ngram(str = corp_str,n = 4)
+ng_phrs_tbl4 <- get.phrasetable(ng4)
+ng_phrs_tbl4 <- ng_phrs_tbl4[order(ng_phrs_tbl4[,3],decreasing = TRUE),]
+head(ng_phrs_tbl4)
+```
+
+### Visually exploring the frequecy of indivisual and certain sets of words
+```{r}
+ggplot(data = top_words,aes(term,occurances)) + geom_bar(stat = "identity",col= "steelblue", fill = "white")+theme(axis.text.x = element_text(angle = 45))
+ggplot(data = head(ng_phrs_tbl2,30),aes(ngrams,freq)) + geom_bar(stat = "identity",col= "green", fill = "white")+theme(axis.text.x = element_text(angle = 45)) +  xlab(label = "bigrams") + ylab(label = "occurances")
+ggplot(data = head(ng_phrs_tbl3,30),aes(ngrams,freq)) + geom_bar(stat = "identity",col= "yellow", fill = "white")+theme(axis.text.x = element_text(angle = 45)) + xlab(label = "trigrams") + ylab(label = "occurances")
+ggplot(data = head(ng_phrs_tbl4,30),aes(ngrams,freq)) + geom_bar(stat = "identity",col= "red", fill = "white")+theme(axis.text.x = element_text(angle = 45)) + xlab(label = "4-grams") + ylab(label = "occurances")
+```
+
+## Further Development
+1. So far data/text clusters have been created ,the task of effective prediction would be to exploit those.
+2. Input by the user will be quantified, i.e. how much of words have been entered, and prediction will be made regarding some latest words.
+3. Words obtained as inputs will be compared across the ngrams.
+3. Following a vectorized approach our prediction model will look for the most suitable word(s).
+4. The definition of *most suitable word* here is: A word that satisfies the prerequisits of the data entered by the user and has occured quite oftenly along with it's former words.
